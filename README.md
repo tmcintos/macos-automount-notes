@@ -14,6 +14,7 @@ We want to automount several NFS shares from a server on our local network at `/
 	2. the NFS server is reachable at `nfs.example.net`,
 	3. the NFS server is also reachable at `tbt-nfs.example.net` if directly connected to the MacBook via Thunderbolt networking connection. *This secondary address is optional, used to obtain the highest speed connection possible when docked at the desk where the NFS server is located.*
 * With any other Network Location, the Macbook has a different host name.
+* We want to keep System Integrity Protection (SIP) enabled.
 
 ## Preliminaries
 
