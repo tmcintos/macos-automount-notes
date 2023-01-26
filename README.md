@@ -20,17 +20,17 @@ We want to automount several NFS shares from a server on our local network at `/
 
 With SIP enabled, modern macOS security policy ensures that:
 
-1. **`automountd` cannot mount directly on `/Network`**. This rules out the possibility of describing `/Network` using an indirect automount map, or similar. So instead we'll use a direct map separately describing each path under `/Network`.
+1. **`automountd` cannot mount directly on `/Network`**. This rules out the possibility of describing `/Network` using an indirect automount map, or similar. So instead we'll use a direct map separately describing each mount point under `/Network`.
 2. **`automountd` cannot mount directly on `/Network/Library`**. To work around this, we'll have the automounter mount on `/Network/.Library` instead, then provide a symbolic link from `/Network/Library` to `/Network/.Library`.
 
-To set this up:
+To create the `/Network/.Library` mount point and `/Network/Library` link(s):
 
 1. Reboot into Recovery Mode
 2. `cd /Volumes/Data`
 3. `mkdir -p Network/.Library`
 4. `ln -s .Library Network/Library`
 
-Create `private/etc/synthetic.conf` containing the line:
+Create `private/etc/synthetic.conf`, containing the line:
 
 	Network		System/Volumes/Data/Network
 
@@ -69,7 +69,7 @@ We then add the following line to end of `/etc/auto_master` to enable this autom
 
 Alternatively, we can create `auto_master` and `auto_Network` maps in Open Directory (LDAP) instead of making the file modifications above. This way we don't have to repeat the configuration if we need to support mulitple NFS client machines using the same Network account server:
 
-To do this, we create `~/Documents/automount.ldif` (*assuming Open Directory server is `ldap.example.net` at `192.168.1.1`; replace `dc=ldap,dc=example,dc=net` and `192.168.1.1` below with the appropriate values for your server*) with the following contents:
+To do this, we create `~/Documents/automount.ldif` \[7] (*assuming Open Directory server is `ldap.example.net` at `192.168.1.1`; replace `dc=ldap,dc=example,dc=net` and `192.168.1.1` below with the appropriate values for your server*) with the following contents:
 
 	# auto_master
 	dn: automountMapName=auto_master,cn=automountMap,dc=ldap,dc=example,dc=net
@@ -132,15 +132,23 @@ We then (re)load this into LDAP:
 	ldapdelete -r -h 192.168.1.1 -U diradmin -W -v 'automountMapName=auto_master,cn=automountMap,dc=ldap,dc=example,dc=net' 'automountMapName=auto_Network,cn=automountMap,dc=ldap,dc=example,dc=net'
 	ldapadd -h 192.168.1.1 -U diradmin -W -v -f ~/Documents/automount.ldif
 
-See also: `ldif(5)` and <https://superuser.com/questions/621147/unable-to-add-automount-entries-on-macosx-using-directory-utility>
+Have I mentioned how much I hate LDAP? Well, now I have.
+
+In case you're wondering, it appears this **cannot** be accomplished using either `dscl(1)` or `Directory Utility`, unfortunately\[8].
 
 ## What About Network Locations?
 
-The MacBook is a mobile device. With the configuration above, when we're not connected to the local network (where our NFS server is unavailable), we'll have problems resulting from automount RPC timeouts (*e.g. when passing references to `/Network/Library` are made during login*). This mostly stems from a [hardcoded RPC timeout in automountd](https://github.com/apple-oss-distributions/autofs/blob/autofs-306/automountd/autod_nfs.c#L129).
+The MacBook is a mobile device. With the configuration above, when we're not connected to the local network (*where our NFS server is unavailable*), we'll have problems with long macOS UI hangs due to automount RPC timeouts (*e.g. when passing references to `/Network/Library` are made during login*). This stems from the persistence of the automount maps regardless of Network Location and a [hardcoded RPC timeout in automountd](https://github.com/apple-oss-distributions/autofs/blob/autofs-306/automountd/autod_nfs.c#L129).
 
-As long as we can guarantee a unique hostname will be used when connected to the local network, and that the NFS server on the local network remains generally available, we can mitigate this problem by
+*Note: I had originally thought that, by virtue of using Open Directory (OD), I could easily avoid having automount maps defined with the `Automatic` Network Location, even when connected to my local Wi-Fi network where the OD server is reachable. However, since the Directory Services configuration apparently ignores Network Location on modern macOS, and since I've configured Directory Services using the IP address of the OD server (`192.168.1.1`), the MacBook still references the Open Directory server and obtains the automount maps with the `Automatic` Network Location, even though it can't resolve the DNS addresses of the NFS server referenced in the maps. And I was unwilling to change the automount maps to specify the NFS server IP addresses directly, or change my Wi-Fi DHCP configuration, for various reasons.*
 
-1. using a hostname-specific direct automount map;
+To mitigate this, I had originally hoped to reduce automountd's RPC timeout period. Since it is hardcoded, this would require installing a locally rebuilt `automountd` (*which is possible, though much more work than one might expect, given `automountd` has dependencies on many closed-source private APIs--who said Darwin is Open Source?*). However, this plan was ultimately thwarted by SIP, which essentially makes it impossible to replace the stock `automountd` as long as SIP is enabled (*it's possible to unload the stock `automountd` with SIP disabled, but that change is disregarded as soon as SIP is re-enabled.*).
+
+So with these constraints, it seems the best we can do is to try to explicitly avoid having the automount maps defined outside the `Home` Network Location.
+
+As long as we can guarantee a unique hostname will be used with the `Home` Network Location, and that the NFS server on the local network remains generally available, we can mitigate this problem by
+
+1. using a hostname-specific direct automount map (*using the `$HOST` variable in `auto_master`*);
 2. invoking `automount -vc` to reload the automountd configuration whenever the Network Location is changed.
 
 ### LDAP-based approach
@@ -209,6 +217,8 @@ Then load it:
 4. `automountd(8)`
 5. `autofs.conf(5)`
 6. `synthetic.conf(5)`
+7. `ldif(5)`
+8. <https://superuser.com/questions/621147/unable-to-add-automount-entries-on-macosx-using-directory-utility>
 
 ## See Also
 
