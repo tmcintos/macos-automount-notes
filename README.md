@@ -2,7 +2,7 @@
 
 ## The Problem
 
-We want to automount several NFS shares from a server on our local network at `/Network/{Applications,Library,Users,share,usrlocal}` in the Mac file system.  Furthermore, we want this to work with a MacBook running macOS 13.1, regardless of whether it is on the local network or not.
+We want to automount several NFS shares from a server on our local network at `/Network/{Applications,Library,Users,share,usrlocal}` in the Mac file system.  Furthermore, we want this to work with a MacBook running macOS 13.1, regardless of whether it is on the local network or not (*meaning, the system should not hang for inordinate periods of time when not on the local network*).
 
 ## Assumptions
 
